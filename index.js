@@ -62,3 +62,33 @@ export function createAudioContext() {
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   return new AudioContextClass();
 }
+
+// suomisaundi-interrepository-messaging-v1
+// BroadcastChannel connects open pages under the same GitHub Pages origin.
+// This is ephemeral, browser-local messaging, NOT server-side synchronization.
+export const systemNode = location.pathname.split("/").filter(Boolean)[0] || "Main";
+export const systemBus = typeof BroadcastChannel !== "undefined"
+  ? new BroadcastChannel("suomisaundi-system-v1") : null;
+const systemSubscribers = new Set();
+export function onSystemMessage(callback) {
+  if (typeof callback !== "function") throw new TypeError("Callback required");
+  systemSubscribers.add(callback);
+  return () => systemSubscribers.delete(callback);
+}
+export function sendSystemMessage(type, payload = null, target = "*") {
+  if (!systemBus) return false;
+  if (typeof type !== "string" || !type || type.length > 80) throw new TypeError("Invalid message type");
+  systemBus.postMessage({
+    protocol: "suomisaundi-system-v1", source: systemNode,
+    target, type, payload, timestamp: Date.now()
+  });
+  return true;
+}
+if (systemBus) systemBus.addEventListener("message", event => {
+  const message = event.data;
+  if (!message || message.protocol !== "suomisaundi-system-v1") return;
+  if (message.target !== "*" && message.target !== systemNode) return;
+  for (const callback of systemSubscribers) {
+    try { callback(message); } catch (error) { console.error("System subscriber error", error); }
+  }
+});
